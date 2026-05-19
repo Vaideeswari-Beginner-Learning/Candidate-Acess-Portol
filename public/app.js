@@ -309,23 +309,27 @@ window.switchUserTab = async function(tab) {
 };
 
 function setupUserDashboard() {
-  const matchedUser = candidates.find(c => c.id === currentUser.id);
+  const matchedUser = candidates.find(c => c.id === currentUser.id) || currentUser;
   if (!matchedUser) return;
 
   // Header quick badge
   const quickStatusBadge = document.getElementById('user-quick-status-badge');
-  const badgeClass = matchedUser.status.toLowerCase();
-  quickStatusBadge.innerHTML = `<span class="status-pill ${badgeClass}"><i class="fa-solid fa-circle"></i> ${matchedUser.status}</span>`;
+  const badgeClass = (matchedUser.status || 'Pending').toLowerCase();
+  quickStatusBadge.innerHTML = `<span class="status-pill ${badgeClass}"><i class="fa-solid fa-circle"></i> ${matchedUser.status || 'Pending'}</span>`;
 
   // Mini statistic widgets
-  document.getElementById('dashboard-status-text').innerText = matchedUser.status;
+  document.getElementById('dashboard-status-text').innerText = matchedUser.status || 'Pending';
   document.getElementById('dashboard-status-text').className = `stat-value status-pill ${badgeClass}`;
-  document.getElementById('dashboard-fic-applied').innerText = matchedUser.appliedFIC;
-  document.getElementById('dashboard-notifications-count').innerText = matchedUser.notifications.length;
+  document.getElementById('dashboard-fic-applied').innerText = matchedUser.appliedFIC || 'Yes';
+  document.getElementById('dashboard-notifications-count').innerText = matchedUser.notifications ? matchedUser.notifications.length : 1;
 
   // Sync avatar characters
-  document.getElementById('user-avatar-char').innerText = matchedUser.name.charAt(0).toUpperCase();
-  document.getElementById('user-badge-name').innerText = matchedUser.name;
+  document.getElementById('user-avatar-char').innerText = matchedUser.name ? matchedUser.name.charAt(0).toUpperCase() : 'C';
+  document.getElementById('user-badge-name').innerText = matchedUser.name || 'Candidate';
+  const roleEl = document.getElementById('user-badge-role');
+  if (roleEl) {
+    roleEl.innerText = matchedUser.status === 'Approved' ? 'FIC Trainee' : 'Candidate';
+  }
 
   // Next steps interactive card hero inside Overview
   const heroContainer = document.getElementById('user-dashboard-hero-container');
