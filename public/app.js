@@ -7,7 +7,8 @@
 // 1. Global State & Fetch Synchronizers
 // ----------------------------------------------------
 const STATE_KEYS = {
-  CURRENT_USER: 'fic_current_user'
+  CURRENT_USER: 'fic_current_user',
+  LOCAL_CANDIDATES: 'fic_local_candidates'
 };
 
 let currentUser = null;
@@ -17,31 +18,54 @@ let globalSettings = {
   linkName: 'Candidate Onboarding Link'
 };
 
-// Central sync manager: pulls latest details from Express database
+function getLocalCandidates() {
+  const local = localStorage.getItem(STATE_KEYS.LOCAL_CANDIDATES);
+  return local ? JSON.parse(local) : [];
+}
+
+function saveLocalCandidates(list) {
+  localStorage.setItem(STATE_KEYS.LOCAL_CANDIDATES, JSON.stringify(list));
+}
+
+// Central sync manager: pulls latest details from Express database and merges with local cache
 async function syncState() {
   try {
-    // 1. Fetch Candidates List
+    // 1. Fetch Candidates List from Express API
     const res = await fetch('/api/candidates');
+    let apiCandidates = [];
     if (res.ok) {
-      candidates = await res.json();
-      
-      // Keep local session user in sync with updated DB record
-      if (currentUser && currentUser.role === 'candidate') {
-        const freshRecord = candidates.find(c => c.id === currentUser.id);
-        if (freshRecord) {
-          currentUser = { ...freshRecord, role: 'candidate' };
-          localStorage.setItem(STATE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
-        }
+      apiCandidates = await res.json();
+    }
+
+    // 2. Fetch local storage candidates cache
+    const localCandidates = getLocalCandidates();
+
+    // 3. Merge API and local candidates to ensure candidates registered in this browser are always preserved
+    const mergedMap = new Map();
+    localCandidates.forEach(c => mergedMap.set(c.id, c));
+    apiCandidates.forEach(c => mergedMap.set(c.id, c));
+    
+    candidates = Array.from(mergedMap.values());
+    saveLocalCandidates(candidates);
+
+    // Keep local session user in sync with updated DB record
+    if (currentUser && currentUser.role === 'candidate') {
+      const freshRecord = candidates.find(c => c.id === currentUser.id);
+      if (freshRecord) {
+        currentUser = { ...freshRecord, role: 'candidate' };
+        localStorage.setItem(STATE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
       }
     }
 
-    // 2. Fetch Global settings
+    // 4. Fetch Global settings
     const settingsRes = await fetch('/api/settings');
     if (settingsRes.ok) {
       globalSettings = await settingsRes.json();
     }
   } catch (err) {
     console.error('Error syncing state with Express API:', err);
+    // Fallback entirely to local storage candidates cache
+    candidates = getLocalCandidates();
   }
 }
 
@@ -188,6 +212,14 @@ window.handleRegister = async function(event) {
     currentUser = data.user;
     currentUser.role = 'candidate';
     localStorage.setItem(STATE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+
+    // Instantly save to local candidates list cache for seamless testing on this browser
+    const localList = getLocalCandidates();
+    if (!localList.some(c => c.id === currentUser.id)) {
+      localList.push(currentUser);
+      saveLocalCandidates(localList);
+    }
+
     activeUserTab = 'dashboard';
     setTimeout(() => renderApp(), 800);
 
@@ -1073,6 +1105,26 @@ window.submitApproveCandidate = async function(id) {
     return;
   }
 
+  // Update local storage instantly for seamless testing on this browser
+  const localList = getLocalCandidates();
+  const cIndex = localList.findIndex(c => c.id === id);
+  if (cIndex !== -1) {
+    localList[cIndex].status = 'Approved';
+    localList[cIndex].onboardingLink = inputLink;
+    localList[cIndex].linkStatus = 'Active';
+    localList[cIndex].linkClickCount = 0;
+    localList[cIndex].rejectionReason = '';
+    if (!localList[cIndex].notifications) localList[cIndex].notifications = [];
+    localList[cIndex].notifications.unshift({
+      id: 'n_app_' + Date.now(),
+      title: 'Application Approved! 🎉',
+      desc: `Your Aadhaar validation was successful. Your "Candidate Onboarding Link" is now active.`,
+      time: 'Just now',
+      type: 'success'
+    });
+    saveLocalCandidates(localList);
+  }
+
   try {
     const res = await fetch(`/api/candidates/${id}/approve`, {
       method: 'POST',
@@ -1116,6 +1168,24 @@ window.promptRejectCandidate = function(id) {
 window.submitRejectCandidate = async function(id) {
   const reason = document.getElementById('modal-rejection-reason').value.trim() || 'Uploaded documents were incomplete or blurry.';
   
+  // Update local storage instantly for seamless testing on this browser
+  const localList = getLocalCandidates();
+  const cIndex = localList.findIndex(c => c.id === id);
+  if (cIndex !== -1) {
+    localList[cIndex].status = 'Rejected';
+    localList[cIndex].rejectionReason = reason;
+    localList[cIndex].onboardingLink = '';
+    if (!localList[cIndex].notifications) localList[cIndex].notifications = [];
+    localList[cIndex].notifications.unshift({
+      id: 'n_rej_' + Date.now(),
+      title: 'Verification Declined ⚠️',
+      desc: `Reason: ${reason}`,
+      time: 'Just now',
+      type: 'danger'
+    });
+    saveLocalCandidates(localList);
+  }
+
   try {
     const res = await fetch(`/api/candidates/${id}/reject`, {
       method: 'POST',
@@ -1201,6 +1271,11 @@ window.deleteCandidate = async function(id) {
   if (!confirm('Are you absolutely sure you want to delete this candidate from the database? This action is permanent.')) {
     return;
   }
+
+  // Update local storage instantly for seamless testing on this browser
+  const localList = getLocalCandidates().filter(c => c.id !== id);
+  saveLocalCandidates(localList);
+
   try {
     const res = await fetch(`/api/candidates/${id}`, {
       method: 'DELETE'
