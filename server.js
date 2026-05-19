@@ -10,7 +10,23 @@ const path = require('path');
 
 const app = express();
 const PORT = process.env.PORT || 8282;
-const DB_PATH = path.join(__dirname, 'database.json');
+const IS_VERCEL = !!process.env.VERCEL;
+const DB_PATH = IS_VERCEL
+  ? path.join('/tmp', 'database.json')
+  : path.join(__dirname, 'database.json');
+
+// Copy bundled database.json to writable /tmp on Vercel startup if not present
+if (IS_VERCEL && !fs.existsSync(DB_PATH)) {
+  try {
+    const bundledDbPath = path.join(__dirname, 'database.json');
+    if (fs.existsSync(bundledDbPath)) {
+      fs.copyFileSync(bundledDbPath, DB_PATH);
+      console.log('Successfully initialized writable /tmp/database.json from bundled seed');
+    }
+  } catch (err) {
+    console.error('Error copying database.json to /tmp on startup:', err);
+  }
+}
 
 // Enable Cross-Origin Resource Sharing
 app.use(cors());
