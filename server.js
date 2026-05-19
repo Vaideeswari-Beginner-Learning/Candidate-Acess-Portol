@@ -361,6 +361,19 @@ app.post('/api/candidates/:id/profile', (req, res) => {
   res.json({ success: true, user: db.candidates[cIndex] });
 });
 
+// API: Delete Candidate
+app.delete('/api/candidates/:id', (req, res) => {
+  const { id } = req.params;
+  const db = readDatabase();
+  const originalLength = db.candidates.length;
+  db.candidates = db.candidates.filter(c => c.id !== id);
+  if (db.candidates.length === originalLength) {
+    return res.status(404).json({ error: 'Candidate not found.' });
+  }
+  writeDatabase(db);
+  res.json({ success: true, message: 'Candidate deleted successfully.' });
+});
+
 // API: Reset DB to default seed data
 app.post('/api/reset-db', (req, res) => {
   const seed = getInitialSeedData();

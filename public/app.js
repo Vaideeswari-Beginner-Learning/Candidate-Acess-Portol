@@ -829,6 +829,7 @@ function renderAdminRequests() {
         <div class="action-btns">
           <button class="btn-action approve" onclick="promptApproveCandidate('${c.id}')" title="Approve Request"><i class="fa-solid fa-check"></i></button>
           <button class="btn-action reject" onclick="promptRejectCandidate('${c.id}')" title="Reject Request"><i class="fa-solid fa-xmark"></i></button>
+          <button class="btn-action delete" onclick="deleteCandidate('${c.id}')" title="Delete Candidate" style="background: var(--danger); border-color: var(--danger);"><i class="fa-solid fa-trash"></i></button>
         </div>
       </td>
     </tr>
@@ -895,15 +896,20 @@ function renderAdminApproved() {
         ${c.linkLastAccessed ? `<br><span style="font-size: 0.7rem; color: var(--text-muted); font-weight: normal;">${new Date(c.linkLastAccessed).toLocaleString()}</span>` : ''}
       </td>
       <td>
-        ${c.linkStatus === 'Pending Re-Approval' ? `
-          <button class="btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="promptApproveCandidate('${c.id}', true)">
-            Grant New Link
+        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+          ${c.linkStatus === 'Pending Re-Approval' ? `
+            <button class="btn-primary" style="padding: 0.25rem 0.5rem; font-size: 0.75rem;" onclick="promptApproveCandidate('${c.id}', true)">
+              Grant New Link
+            </button>
+          ` : `
+            <button onclick="promptApproveCandidate('${c.id}', true)" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">
+              <i class="fa-solid fa-pen"></i> Edit Link
+            </button>
+          `}
+          <button onclick="deleteCandidate('${c.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; border-color: var(--danger); color: var(--danger);">
+            <i class="fa-solid fa-trash"></i> Delete
           </button>
-        ` : `
-          <button onclick="promptApproveCandidate('${c.id}', true)" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem;">
-            <i class="fa-solid fa-pen"></i> Edit Link
-          </button>
-        `}
+        </div>
       </td>
     </tr>
   `).join('');
@@ -956,6 +962,9 @@ function renderAdminReApprovalRequests() {
           <button class="btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; border-color: var(--danger); color: var(--danger);" onclick="promptRejectCandidate('${c.id}')">
             <i class="fa-solid fa-xmark"></i> Reject
           </button>
+          <button class="btn-secondary" style="padding: 0.35rem 0.75rem; font-size: 0.8rem; border-color: var(--danger); color: var(--danger);" onclick="deleteCandidate('${c.id}')">
+            <i class="fa-solid fa-trash"></i> Delete
+          </button>
         </div>
       </td>
     </tr>
@@ -979,9 +988,14 @@ function renderAdminRejected() {
         <i class="fa-solid fa-triangle-exclamation"></i> ${c.rejectionReason || 'Uploaded materials were illegible.'}
       </td>
       <td>
-        <button onclick="promptApproveCandidate('${c.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; border-color: var(--success); color: var(--success);">
-          Re-evaluate & Approve
-        </button>
+        <div style="display: flex; gap: 0.35rem; flex-wrap: wrap;">
+          <button onclick="promptApproveCandidate('${c.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; border-color: var(--success); color: var(--success);">
+            Re-evaluate & Approve
+          </button>
+          <button onclick="deleteCandidate('${c.id}')" class="btn-secondary" style="padding: 0.3rem 0.6rem; font-size: 0.8rem; border-color: var(--danger); color: var(--danger);">
+            <i class="fa-solid fa-trash"></i> Delete
+          </button>
+        </div>
       </td>
     </tr>
   `).join('');
@@ -1176,6 +1190,27 @@ window.closeSidebar = function(overlay) {
   if (container) {
     const sidebar = container.querySelector('.sidebar');
     if (sidebar) sidebar.classList.remove('active');
+  }
+};
+
+window.deleteCandidate = async function(id) {
+  if (!confirm('Are you absolutely sure you want to delete this candidate from the database? This action is permanent.')) {
+    return;
+  }
+  try {
+    const res = await fetch(`/api/candidates/${id}`, {
+      method: 'DELETE'
+    });
+    if (res.ok) {
+      showToast('Candidate deleted successfully', 'success');
+      await syncState();
+      await switchAdminTab(activeAdminTab);
+    } else {
+      const errData = await res.json();
+      showToast(errData.error || 'Failed to delete candidate', 'danger');
+    }
+  } catch (err) {
+    showToast('Network error deleting candidate', 'danger');
   }
 };
 
